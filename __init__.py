@@ -1,7 +1,7 @@
 bl_info = {
     "name": "OrtogOnBlender",
     "author": "Cicero Moraes e Everton da Rosa",
-    "version": (1, 0),
+    "version": (1, 1, 11),
     "blender": (2, 75, 0),
     "location": "View3D",
     "description": "Planejamento de Cirurgia Ortognática no Blender",
@@ -10,6 +10,29 @@ bl_info = {
     "category": "ortog",
     }
 
+if "bpy" in locals():
+    import imp
+    imp.reload(ImportaArmature)
+#    imp.reload(GeraModelosTomo)
+    print("Reloaded multifiles")
+else:
+    from .ImportaArmature import *
+    from .GeraModelosTomo import *
+    from .AlinhaRedimFotogrametria import *
+    from .DinamicaMole import *
+    from .ConfiguraOsteotomias import *
+    from .FotogrametriaOpenMVG import *
+    from .FotogrametriaSMVS import *
+    from .PontosAnatomicos import *
+    from .CriaSplint import *
+    from .FerramentasRefeMedidas import *
+    from .FerramentasCorte import *
+    from .CefaloMedidas import *
+    from .AjustaTomo import *
+    from .CalculaPontos import *
+#    from . import mycube, mysphere, mycylinder
+    print("Imported all OrtogOnBlender modules")
+
 import bpy
 import os
 import sys
@@ -17,6 +40,8 @@ import subprocess
 import tempfile
 import bmesh
 import shutil
+import platform
+
 
 from bpy_extras.object_utils import AddObjectHelper, object_data_add
 
@@ -33,6 +58,109 @@ from bpy.types import (Panel,
 from mathutils import Matrix, Vector
 from math import sqrt
 from bpy import context
+from os.path import expanduser
+import math
+
+from os import listdir
+from os.path import isfile, join
+import exifread
+
+# Calcula Pontos
+
+class capturaINItodos(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.captura_ini_todos"
+    bl_label = "Captura todos objetos inicio"
+
+    def execute(self, context):
+        capturaINItodosDef(self, context)
+        return {'FINISHED'}
+
+
+class capturaFINtodos(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.captura_fin_todos"
+    bl_label = "Captura todos objetos final"
+
+    def execute(self, context):
+        capturaFINtodosDef(self, context)
+        return {'FINISHED'}
+
+
+class geraDeslocamentoTODOS(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.gera_deslocamento_todos"
+    bl_label = "Gera deslocamento de todos"
+
+    def execute(self, context):
+        geraDeslocamentoTODOSDef(self, context)
+        return {'FINISHED'}
+
+#ABRE TEMPORARIO
+
+class AbreTMP(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.abre_tmp"
+    bl_label = "Abre TMP"
+
+    def execute(self, context):
+        AbreTMPDef(self, context)
+        return {'FINISHED'}
+
+#CORRIGE DICOM
+
+class CorrigeDicom(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.corrige_dicom"
+    bl_label = "Corrige DICOM"
+
+    def execute(self, context):
+        CorrigeDicomDef(self, context)
+        return {'FINISHED'}
+
+# AJUSTA TOMO
+
+class AjustaTomo(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.ajusta_tomo"
+    bl_label = "Ajusta Tomo"
+
+    def execute(self, context):
+        AjustaTomoDef(self, context)
+        return {'FINISHED'}
+
+
+
+# IMPORTA TOMO MOLDES
+
+class GeraModelosTomoArc(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.gera_modelos_tomo_arc"
+    bl_label = "Gera Tomografia Molde"
+    
+    def execute(self, context):
+        GeraModelosTomoArcDef(self, context)
+        return {'FINISHED'}
+
+#PONTO VISTA RAIO-X
+class CameraXRayView(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.camera_xray_view"
+    bl_label = "Visualiza Camera Raio-X"
+    
+    def execute(self, context):
+        CameraXRayViewDef(self, context)
+        return {'FINISHED'}
+
+#PONTO VISTA PANORAMICA
+class CameraPanoramic(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.camera_panoramic"
+    bl_label = "Visualiza Camera Raio-X"
+    
+    def execute(self, context):
+        CameraPanoramicDef(self, context)
+        return {'FINISHED'}
 
 # CONFIGURA EXECUTÁVEIS E SCRIPTS
 
@@ -41,21 +169,32 @@ class ortogPreferences(bpy.types.AddonPreferences):
 
     dicom2stl_filepath = StringProperty(
         name="Dicom2STL Path",
-        description="Location of Dicom2STL Python file",
+        description="Location of Dicom2Mesh Python file",
         subtype="FILE_PATH",
         default="",
         )
 
-    OpenMVG_filepath = StringProperty(
-        name="OpenMVG Path",
-        description="Location of OpenMVG Python file",
-        subtype="FILE_PATH",
-        default="",
-        )
 
-    OpenMVS_filepath = StringProperty(
-        name="OpenMVS Path",
-        description="Location of OpenMVS script",
+#    OpenMVG_filepath = StringProperty(
+#        name="OpenMVG Path",
+#        description="Location of OpenMVG Python file",
+#        subtype="FILE_PATH",
+#        default="",
+#        )
+
+
+ #   OpenMVS_filepath = StringProperty(
+ #       name="OpenMVS Path",
+ #       description="Location of OpenMVS script",
+ #       subtype="FILE_PATH",
+ #       default="",
+ #       )
+
+
+
+    SMVS_filepath = StringProperty(
+        name="SMVS Path",
+        description="Location of SMVS script",
         subtype="FILE_PATH",
         default="",
         )
@@ -75,6 +214,9 @@ class ortogPreferences(bpy.types.AddonPreferences):
         row = layout.row()
         row.prop(self, "OpenMVS_filepath")
 
+        row = layout.row()
+        row.prop(self, "SMVS_filepath")
+
 def get_dicom2stl_filepath(context):
     """preference set in the addon"""
 #    addon = get_addon_name()
@@ -92,6 +234,140 @@ def get_OpenMVS_filepath(context):
 #    addon = get_addon_name()
     preferences = context.user_preferences.addons["OrtogOnBlender-master"].preferences
     return preferences.OpenMVS_filepath
+
+
+def get_SMVS_filepath(context):
+    """preference set in the addon"""
+#    addon = get_addon_name()
+    preferences = context.user_preferences.addons["OrtogOnBlender-master"].preferences
+    return preferences.SMVS_filepath
+
+# TOMOGRAFIAS SELECAO
+
+#HELICAL
+
+def TomoHeliDef(self, context):
+    
+    context = bpy.context
+    obj = context.active_object
+    scn = context.scene
+
+    bpy.context.scene.interesse_ossos = "200"
+    bpy.context.scene.interesse_mole = "-300"
+    bpy.context.scene.interesse_dentes = "1760"
+
+class TomoHeli(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.tomo_heli"
+    bl_label = "Objeto Teste" # Tem que ter nome diferente
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = "teste"
+    
+    def execute(self, context):
+        TomoHeliDef(self, context)
+        return {'FINISHED'}
+
+#CONEBEAM
+    
+def TomoConeDef(self, context):
+    
+    context = bpy.context
+    obj = context.active_object
+    scn = context.scene
+
+    bpy.context.scene.interesse_ossos = "585"
+    bpy.context.scene.interesse_mole = "-300"
+    bpy.context.scene.interesse_dentes = "1195"
+
+class TomoCone(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.tomo_cone"
+    bl_label = "Objeto Teste" # Tem que ter nome diferente
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = "teste"
+    
+    def execute(self, context):
+        TomoConeDef(self, context)
+        return {'FINISHED'}
+
+
+# ROTACIONA/FLIP Z
+
+def rotacionaZDef(self, context):
+    
+    context = bpy.context
+    obj = context.active_object
+    scn = context.scene
+
+    bpy.ops.transform.rotate(value=3.14159, axis=(0, 0, 1))
+
+class rotacionaZ(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.rotaciona_z"
+    bl_label = "Rotaciona "
+    
+    def execute(self, context):
+        rotacionaZDef(self, context)
+        return {'FINISHED'}
+
+#------------------------------------
+
+# LINHA BASE
+
+def LinhaBaseDef(self, context):
+
+    verts = [Vector((0, 0, 125)),
+             Vector((0, 0, -125)),
+            ]
+
+    edges = [[0,1]]
+    
+    faces = []
+
+
+    mesh = bpy.data.meshes.new(name="LinhaBase")
+    mesh.from_pydata(verts, edges, faces)
+    object_data_add(context, mesh, operator=self)
+
+class LinhaBase(Operator, AddObjectHelper):
+    """Create a new Mesh Object"""
+    bl_idname = "mesh.add_linhabase"
+    bl_label = "Add Linha Base"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+
+        LinhaBaseDef(self, context)
+
+        return {'FINISHED'}
+
+def add_object_button(self, context):
+    self.layout.operator(
+        RhinLinhaBase.bl_idname,
+        text="LinhaBase",
+        icon='VIEW3D')
+
+class BooleanCortes(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "mesh.boolean_cortes"
+    bl_label = "Boolean Cortes"
+    
+    def execute(self, context):
+        BooleanCortesDef(self, context)
+        return {'FINISHED'}
+
+
+class ImportaArmature(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.importa_armature"
+    bl_label = "Importa estrutura de bones"
+    
+    def execute(self, context):
+        ImportaArmatureDef(self, context)
+        return {'FINISHED'}
+
 # -----------------------------------
 
 def CriaEsperssuraDef(self, context):
@@ -105,205 +381,28 @@ def CriaEsperssuraDef(self, context):
     bpy.ops.object.modifier_add(type='SOLIDIFY') 
     bpy.context.object.modifiers["Solidify"].thickness = 0.3
     bpy.context.object.modifiers["Solidify"].offset = 0
-
-
-def CortaFaceDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
-
-
-    bpy.context.object.name = "FaceMalha"
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.knife_project(cut_through=True)
-    bpy.ops.mesh.separate(type='SELECTED')
-    bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.data.objects['FaceMalha.001'].select = False
-    bpy.data.objects['FaceMalha'].select = True
-    bpy.ops.object.delete()
-    bpy.data.objects['Circle'].select = True
-    bpy.ops.object.delete()
-
-def AlinhaRostoDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
-    scn = context.scene
-
-    bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN')
-
-    bpy.context.object.name = "Rosto"
-    bpy.ops.mesh.edge_face_add() # cria face nos pontos selecionados
-    bpy.ops.mesh.normals_make_consistent(inside=False)
-
-    bpy.ops.mesh.separate(type='SELECTED') # separa triângulo
-    bpy.ops.object.editmode_toggle() #sai do modo de edição
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.data.objects['Rosto.001'].select = True
-    bpy.context.scene.objects.active = bpy.data.objects['Rosto.001']
-    bpy.ops.object.editmode_toggle() #entra modo edição
-    bpy.ops.mesh.select_all(action='TOGGLE') #seleciona tudo
-
-#    bpy.ops.mesh.flip_normals() # inverte os normals
-#    bpy.ops.mesh.normals_make_consistent(inside=False) # Força normals para fora
-    bpy.ops.view3d.viewnumpad(type='TOP', align_active=True) # alinha a vista com a face selecionada
-
-    bpy.ops.object.editmode_toggle() #sai edit mode
-    
-
-# FATOR DE ESCALA
-
-def posicionaEmpties():
-
-    context = bpy.context    
-    obj = context.active_object
-    v0 = obj.data.vertices[0]
-    v1 = obj.data.vertices[1]
-    v2 = obj.data.vertices[2]
-
-    co_final0 = obj.matrix_world * v0.co
-    co_final1 = obj.matrix_world * v1.co
-    co_final2 = obj.matrix_world * v2.co
-
-    # now we can view the location by applying it to an object
-    obj_empty0 = bpy.data.objects.new("Dist0", None)
-    context.scene.objects.link(obj_empty0)
-    obj_empty0.location = co_final0
-
-    obj_empty1 = bpy.data.objects.new("Dist1", None)
-    context.scene.objects.link(obj_empty1)
-    obj_empty1.location = co_final1
-
-    obj_empty2 = bpy.data.objects.new("Dist2", None)
-    context.scene.objects.link(obj_empty2)
-    obj_empty2.location = co_final2
-
-def medidaAtual():
-
-    posicionaEmpties()
-    
-    """ Retorna Média de Três Pontos """
-    bpy.ops.object.select_all(action='DESELECT')
-    a = bpy.data.objects['Dist0']
-    b = bpy.data.objects['Dist1']
-    c = bpy.data.objects['Dist2']
-    a.select = True
-    b.select = True
-    c.select = True
-    l = []
-    for item in bpy.context.selected_objects:
-        l.append(item.location)
-
-    distancia1 = sqrt( (l[0][0] - l[2][0])**2 + (l[0][1] - l[2][1])**2 + (l[0][2] - l[2][2])**2)
-    distancia2 = sqrt( (l[1][0] - l[2][0])**2 + (l[1][1] - l[2][1])**2 + (l[1][2] - l[2][2])**2)
-    distancia3 = sqrt( (l[1][0] - l[0][0])**2 + (l[1][1] - l[0][1])**2 + (l[1][2] - l[0][2])**2)
-
-    print(distancia1)
-    print(distancia2)
-    print(distancia3)
-    
-    medidaAtual = min(distancia1, distancia2, distancia3)
-    print("A distância menor é:")
-    print(medidaAtual)
-
-    medidaReal = float(bpy.context.scene.medida_real)
-    print(medidaReal)
-
-    global fatorEscala 
-    fatorEscala = medidaReal / medidaAtual
-    print(fatorEscala)
-
-# ALINHAMENTO ROSTO PARTE 2 - ALINHA OBJETO
-
-def AlinhaRostoDef2(self, context):
-
-    medidaAtual()
-    
-    bpy.ops.object.select_all(action='DESELECT')
-    c = bpy.data.objects['Rosto.001']
-    bpy.context.scene.objects.active = c
-    
-    context = bpy.context
-    obj = context.active_object
-    scn = context.scene
-
-    bpy.ops.object.editmode_toggle() #entra edit mode 
-    bpy.ops.view3d.snap_cursor_to_selected() # posiciona o cursor ao centro da seleção
-#    bpy.ops.mesh.delete(type='EDGE_FACE') # deleta apenas a face e edges selecionadas
-    bpy.ops.object.editmode_toggle() #sai edit mode
-    
-    bpy.ops.object.select_all(action='DESELECT') # desseleciona todos os objetos
-    bpy.ops.object.add(radius=1.0, type='EMPTY', view_align=True)
-#    bpy.ops.object.empty_add(type='SINGLE_ARROW', view_align=True) # cria um empty single arrow apontando para o view
-    bpy.context.object.name = "Alinhador" #renomeia de alinhador
-
-#    bpy.context.object.rotation_euler[0] = 1.5708
-
-# Parenteia objetos
-    a = bpy.data.objects['Rosto']
-    b = bpy.data.objects['Alinhador']
-    c = bpy.data.objects['Rosto.001']
-
-
-    bpy.ops.object.select_all(action='DESELECT')
-    a.select = True
-    b.select = True 
-    bpy.context.scene.objects.active = b
-    bpy.ops.object.parent_set()
-    
-    bpy.ops.object.select_all(action='DESELECT')
-    c.select = True
-    b.select = True 
-    bpy.context.scene.objects.active = b
-    bpy.ops.object.parent_set() 
-
-# Reseta rotações
-    bpy.ops.object.rotation_clear(clear_delta=False)
-    
-    bpy.ops.object.select_all(action='DESELECT')
-    a.select = True
-    bpy.context.scene.objects.active = a        
-    bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
-
-    bpy.ops.object.select_all(action='DESELECT')
-    b.select = True
-    bpy.context.scene.objects.active = b
-    bpy.ops.object.delete(use_global=False)
-
-    bpy.ops.object.select_all(action='DESELECT')
-    c.select = True
-    bpy.context.scene.objects.active = c
-    bpy.ops.object.delete(use_global=False)
-
-    bpy.ops.object.select_all(action='DESELECT')
-    a.select = True 
-    bpy.context.scene.objects.active = a
-    bpy.ops.transform.rotate(value=1.5708, axis=(0, 0, 1), constraint_axis=(False, False, True), constraint_orientation='GLOBAL', mirror=False, proportional='DISABLED', proportional_edit_falloff='SMOOTH', proportional_size=1)
-    bpy.ops.transform.rotate(value=1.5708, axis=(1, 0, 0), constraint_axis=(True, False, False), constraint_orientation='GLOBAL', mirror=False, proportional='DISABLED', proportional_edit_falloff='SMOOTH', proportional_size=1)
-
-
-    objRedimensionado = bpy.data.objects['Rosto']
-    objRedimensionado.scale = ( fatorEscala, fatorEscala, fatorEscala )
-
    
-    bpy.ops.view3d.viewnumpad(type='FRONT')
-    bpy.ops.view3d.view_selected(use_all_regions=False)
-    
-    
-    bpy.context.object.name = "Rosto_OK"
-    
-    bpy.ops.object.select_all(action='DESELECT')
-    a = bpy.data.objects['Dist0']
-    b = bpy.data.objects['Dist1']
-    c = bpy.data.objects['Dist2']
-    a.select = True
-    b.select = True
-    c.select = True
 
-    bpy.ops.object.delete(use_global=False)
+# ANIMA LOCAL E ROTAÇÃO
+
+def AnimaLocRotDef(self, context):
+
+    context = bpy.context
+    obj = context.active_object
+    scn = context.scene
+    bpy.ops.anim.keyframe_insert_menu(type='BUILTIN_KSI_LocRot')
+
+class AnimaLocRot(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "anim.animalocrot"
+    bl_label = "Anima Localização e Rotação"
+    
+    def execute(self, context):
+        AnimaLocRotDef(self, context)
+        return {'FINISHED'}
 
 #-------------------------------------
+
 
 class AlinhaRosto(bpy.types.Operator):
     """Tooltip"""
@@ -320,7 +419,7 @@ class MedidaReal(bpy.types.Panel):
     bl_label = "Object Info ..."
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
-    bl_category = "Shortcuts ... (:"
+    bl_category = "Ortog"
 
     def draw(self, context) :
         col = self.layout.column(align = True)
@@ -388,429 +487,39 @@ def CriaMaxilaDef(self, context):
     bpy.context.object.modifiers["Solidify"].thickness = 0.3
     bpy.context.object.modifiers["Solidify"].offset = 0
 
-# CONFIGURA MENTO
-def ConfiguraMentoDef(self, context):
+# MENSAGENS DE ERRO
 
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
+def ERROarmatureDef(self, context):
+    self.layout.label("Você não configurou a Armature!")
 
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
+def ERROtipoDef(self, context):
+    self.layout.label("Você não selecionou o objeto correto!")
 
-    vg = obj.vertex_groups.new(name="me")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
+def ERROruntimeDef(self, context):
+    self.layout.label("Você não selecionou nenhum objeto!")
+
+def ERROcmDef(self, context):
+    self.layout.label("Você não configurou o Ramo da Mandíbula!")
     
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialMento") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.8, 0.35, 0.2) #change color
-    bpy.context.object.name = "me"
-
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['me'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
-
-# CONFIGURA RAMO DA MANDÍBULA
-def ConfiguraCorpoMandDef(self, context):
+def ERROruntimePontosDef(self, context):
+    self.layout.label("Você não selecionou os três pontos!")
     
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
+def ERROruntimeCorteDef(self, context):
+    self.layout.label("Você não selecionou o objeto a ser cortado!")
 
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
+# CRIA CIRCULO DE CORTE
 
-    vg = obj.vertex_groups.new(name="Corpo_Mandibular.GUIA")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
+class CriaCirculoCorte(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.cria_circulo_corte"
+    bl_label = "Cria Circulo de Corte"
 
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialCorpoMand") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.35, 0.8, 0.4) #change color
-    bpy.context.object.name = "cm"
+    def execute(self, context):
+        CriaCirculoCorteDef(self, context)
+        return {'FINISHED'}
 
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['cm'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
 
-# CONFIGURA RAMO DIREITO
-def ConfiguraRamoDirDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
-
-    vg = obj.vertex_groups.new(name="rd")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialRamoDir") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.4, 0.3, 0.8) #change color
-    bpy.context.object.name = "rd"
-
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['rd'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
-
-# CONFIGURA RAMO ESQUERDO
-def ConfiguraRamoEsqDef(self, context):
-
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
-
-    vg = obj.vertex_groups.new(name="re")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialRamoEsq") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.4, 0.3, 0.8) #change color
-    bpy.context.object.name = "re"
-
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['re'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
-
-# CONFIGURA MAXILA
-def ConfiguraMaxilaDef(self, context):
-
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
-
-    vg = obj.vertex_groups.new(name="Maxila.GUIA")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialMaxila") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.8, 0.3, 0.2) #change color
-    bpy.context.object.name = "ma"
-
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['ma'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
-
-# CONFIGURA CABEÇA
-def ConfiguraCabecaDef(self, context):
-
-    context = bpy.context
-    obj = context.active_object
- #   scn = context.scene
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
-
-    vg = obj.vertex_groups.new(name="ca")
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.object.vertex_group_assign()
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    activeObject = bpy.context.active_object #Set active object to variable
-    mat = bpy.data.materials.new(name="MaterialCabeca") #set new material to variable
-    activeObject.data.materials.append(mat) #add the material to the object
-    bpy.context.object.active_material.diffuse_color = (0.8, 0.75, 0.2) #change color
-    bpy.context.object.name = "ca"
-
-    armatureHead = bpy.data.objects['Armature_Head']
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['ca'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
-
-
-def AreasInfluenciaDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
-    scn = context.scene
-
-    #vg = obj.vertex_groups.new(name=slot.material.name)
-    bpy.ops.object.mode_set(mode='EDIT')
-#    bpy.ops.object.editmode_toggle()
-    mesh=bmesh.from_edit_mesh(bpy.context.object.data)
-    for v in mesh.verts:
-        v.select = True
-
-
-    # CORPO MANDÍBULA
-
-    vg = obj.vertex_groups.new(name="cm")
-        
-    scn.tool_settings.vertex_group_weight=0
-
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    # MAXILA
-
-    vg = obj.vertex_groups.new(name="ma")
-        
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    # MENTO
-
-    vg = obj.vertex_groups.new(name="me")
-        
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    # CABEÇA
-
-    vg = obj.vertex_groups.new(name="ca")
-        
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    # RAMO DIREITO
-        
-    vg = obj.vertex_groups.new(name="rd")
-        
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    # RAMO ESQUERDO
-
-    vg = obj.vertex_groups.new(name="re")
-        
-    bpy.ops.object.mode_set(mode='EDIT')
-
-    bpy.ops.object.vertex_group_assign()
-
-
-    bpy.ops.object.mode_set(mode='OBJECT') # Depois de fazer tudo voltar ao modo de Objeto
-
-
-def CriaAreasDeformacaoDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
-    scn = context.scene
-
-
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "me"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["me"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 25
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 3
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Mento"
-    bpy.context.object.modifiers["Mento"].show_expanded = False
-
-    
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "cm"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["cm"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 35
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 12
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Corpo Mandibula"
-    bpy.context.object.modifiers["Corpo Mandibula"].show_expanded = False
-    
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "re"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["re"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 35
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 12
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Ramo Esquerdo"
-    bpy.context.object.modifiers["Ramo Esquerdo"].show_expanded = False
-    
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "rd"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["rd"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 35
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 12
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Ramo Direito"
-    bpy.context.object.modifiers["Ramo Direito"].show_expanded = False
-    
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "ma"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["ma"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 37
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 9.5
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Maxila"
-    bpy.context.object.modifiers["Maxila"].show_expanded = False
-    
-    bpy.ops.object.modifier_add(type='VERTEX_WEIGHT_PROXIMITY')
-    bpy.context.object.modifiers["VertexWeightProximity"].vertex_group = "ca"
-    bpy.context.object.modifiers["VertexWeightProximity"].target = bpy.data.objects["ca"]
-    bpy.context.object.modifiers["VertexWeightProximity"].proximity_mode = 'GEOMETRY'
-    bpy.context.object.modifiers["VertexWeightProximity"].min_dist = 90
-    bpy.context.object.modifiers["VertexWeightProximity"].max_dist = 0
-    bpy.context.object.modifiers["VertexWeightProximity"].falloff_type = 'SHARP'
-    bpy.context.object.modifiers["VertexWeightProximity"].name = "Cabeça"
-    bpy.context.object.modifiers["Cabeça"].show_expanded = False
-
-def GeraModelosTomoDef(self, context):
-    
-    scn = context.scene
-    
-    tmpdir = tempfile.gettempdir()
-    tmpSTLossos = tmpdir+'/ossos.stl'
-    tmpSTLmole = tmpdir+'/mole.stl'
-    dicom2DtlPath = get_dicom2stl_filepath(context)
-
-
-    subprocess.call([dicom2DtlPath, '-i',  scn.my_tool.path, '-r', '0.9', '-s', '-t', '200', '-o', tmpSTLossos])
-  
-
-#    subprocess.call(['vtk6python',dicom2DtlPath, '-t',  'bonetest' , '-o', tmpSTLossos ,  scn.my_tool.path])
-
-    bpy.ops.import_mesh.stl(filepath=tmpSTLossos, filter_glob="*.stl",  files=[{"name":"ossos.stl", "name":"ossos.stl"}], directory=tmpdir)
-    
-    bpy.ops.view3d.view_all(center=False)
-    
-    
- #   subprocess.call(['vtk6python',dicom2DtlPath , '-t',  'skintest' , '-o', tmpSTLmole ,  scn.my_tool.path])
-
-    subprocess.call([dicom2DtlPath, '-i',  scn.my_tool.path, '-r', '0.9', '-s', '-t', '65', '-o', tmpSTLmole])
-
-    bpy.ops.import_mesh.stl(filepath=tmpSTLmole, filter_glob="*.stl",  files=[{"name":"mole.stl", "name":"mole.stl"}], directory=tmpdir)
-    
-    bpy.ops.view3d.view_all(center=False)
-
-def GeraModeloFotoDef(self, context):
-    
-    scn = context.scene
-    
-    tmpdir = tempfile.gettempdir()
-
-    OpenMVGtmpDir = tmpdir+'/OpenMVG'
-    tmpOBJface = tmpdir+'/MVS/scene_dense_mesh_texture2.obj'
-
-    
-
-    OpenMVGPath = get_OpenMVG_filepath(context)
-
-    OpenMVSPath = get_OpenMVS_filepath(context)
-
-
-    shutil.rmtree(tmpdir+'/OpenMVG', ignore_errors=True)
-    shutil.rmtree(tmpdir+'/MVS', ignore_errors=True)
-
-#    if os.name=='posix':
-#    	shutil.rmtree(tmpdir+'/OpenMVG')
-#    	shutil.rmtree(tmpdir+'/MVS')
-
-#    if os.name=='nt':
-#    	subprocess.call(['rmdir', '/Q', '/S', tmpdir+'/OpenMVG'])
-#    	subprocess.call(['rmdir', '/Q', '/S', tmpdir+'/MVS'])
-
-    subprocess.call(['python', OpenMVGPath , scn.my_tool.path ,  OpenMVGtmpDir])
-
-    subprocess.call(OpenMVSPath ,  shell=True)
-
-#    subprocess.call([ 'meshlabserver', '-i', tmpdir+'scene_dense_mesh_texture.ply', '-o', tmpdir+'scene_dense_mesh_texture2.obj', '-om', 'vn', 'wt' ])
-
-    bpy.ops.import_scene.obj(filepath=tmpOBJface, filter_glob="*.obj;*.mtl")
-
-    scene_dense_mesh_texture2 = bpy.data.objects['scene_dense_mesh_texture2']
-
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = scene_dense_mesh_texture2
-    bpy.data.objects['scene_dense_mesh_texture2'].select = True
-
-
-    bpy.context.object.data.use_auto_smooth = False
-    bpy.context.object.active_material.specular_hardness = 60
-    bpy.context.object.active_material.diffuse_intensity = 0.6
-    bpy.context.object.active_material.specular_intensity = 0.3
-    bpy.ops.object.modifier_add(type='SMOOTH')
-    bpy.context.object.modifiers["Smooth"].factor = 2
-    bpy.context.object.modifiers["Smooth"].iterations = 3
-    bpy.ops.object.convert(target='MESH')
-    bpy.ops.view3d.view_all(center=False)
-
-
-
-def ConfiguraDinamicaMoleDef(self, context):
-    
-    context = bpy.context
-    obj = context.active_object
-    scn = context.scene
-
-    bpy.ops.object.areas_influencia()
-    bpy.ops.object.cria_areas_deformacao()
-    bpy.ops.object.convert(target='MESH')
-
-
-#    a = bpy.data.objects['FaceMalha.001']
-    armatureHead = bpy.data.objects['Armature_Head']
-
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.scene.objects.active = armatureHead
-    bpy.data.objects['FaceMalha.001'].select = True
-    bpy.data.objects['Armature_Head'].select = True
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
+# CORTA FACE
 
 class CortaFace(bpy.types.Operator):
     """Tooltip"""
@@ -821,6 +530,62 @@ class CortaFace(bpy.types.Operator):
         CortaFaceDef(self, context)
         return {'FINISHED'}
 
+# CRIA CIRCULO DE CORTE ARCADA
+
+class CriaCirculoCorteArc(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.cria_circulo_corte_arc"
+    bl_label = "Cria Circulo de Corte"
+
+    def execute(self, context):
+        CriaCirculoCorteArcDef(self, context)
+        return {'FINISHED'}
+
+# CORTA ARCADA DENTRO
+
+class CortaArcada(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.corta_arcada"
+    bl_label = "Corta Arcada"
+    
+    def execute(self, context):
+        CortaArcadaDef(self, context)
+        return {'FINISHED'}
+
+# CORTA OSSOS DENTRO
+
+class CortaOssos(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.corta_ossos"
+    bl_label = "Corta ossos"
+    
+    def execute(self, context):
+        CortaOssosDef(self, context)
+        return {'FINISHED'}
+
+# SEGMENTA DESENHO
+
+class SegmentaDesenho(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.segmenta_desenho"
+    bl_label = "Segmenta Desenho"
+    
+    def execute(self, context):
+        SegmentaDesenhoDef(self, context)
+        return {'FINISHED'}
+
+# FECHA BURACOS
+
+class FechaBuracos(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.fecha_buracos"
+    bl_label = "Fecha Buracos"
+    
+    def execute(self, context):
+        FechaBuracosDef(self, context)
+        return {'FINISHED'}
+
+# CRIA ESPESSURA
 
 class CriaEspessura(bpy.types.Operator):
     """Tooltip"""
@@ -926,6 +691,7 @@ class ConfiguraMento(bpy.types.Operator):
         ConfiguraMentoDef(self, context)
         return {'FINISHED'}
 
+
 class ConfiguraCorpoMand(bpy.types.Operator):
     """Tooltip"""
     bl_idname = "object.configura_corpo_mand"
@@ -1007,6 +773,15 @@ class GeraModeloFoto(bpy.types.Operator):
         GeraModeloFotoDef(self, context)
         return {'FINISHED'}
 
+class GeraModeloFotoSMVS(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.gera_modelo_foto_smvs"
+    bl_label = "Gera Modelos Foto"
+    
+    def execute(self, context):
+        GeraModeloFotoSMVSDef(self, context)
+        return {'FINISHED'}
+
 class ConfiguraDinamicaMole(bpy.types.Operator):
     """Tooltip"""
     bl_idname = "object.configura_dinamica_mole"
@@ -1016,8 +791,305 @@ class ConfiguraDinamicaMole(bpy.types.Operator):
         ConfiguraDinamicaMoleDef(self, context)
         return {'FINISHED'}
 
+# IMPORTA SPLINT COM ARMATURE
 
-#IMPORTA TOMO
+      
+class ImportaSplint(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.importa_splint"
+    bl_label = "Importa Splint com Armature"
+    
+    def execute(self, context):
+        ImportaSplintDef(self, context)
+        return {'FINISHED'}
+
+# PONTOS NOS DENTES SUPERIORES
+
+class EMP11(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp11"
+    bl_label = "EMP11"
+    
+    def execute(self, context):
+        EMP11Def(self, context)
+        return {'FINISHED'}
+
+  
+class EMP21(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp21"
+    bl_label = "EMP21"
+    
+    def execute(self, context):
+        EMP21Def(self, context)
+        return {'FINISHED'}
+    
+   
+class EMP13(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp13"
+    bl_label = "EMP1"
+    
+    def execute(self, context):
+        EMP13Def(self, context)
+        return {'FINISHED'}
+    
+ 
+class EMP23(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp23"
+    bl_label = "EMP23"
+    
+    def execute(self, context):
+        EMP23Def(self, context)
+        return {'FINISHED'}
+    
+
+class EMP16(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp16"
+    bl_label = "EMP16"
+    
+    def execute(self, context):
+        EMP16Def(self, context)
+        return {'FINISHED'}
+    
+   
+class EMP26(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp26"
+    bl_label = "EMP26"
+    
+    def execute(self, context):
+        EMP26Def(self, context)
+        return {'FINISHED'}
+
+
+class EMPPterygoidL(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.pterygoidl"
+    bl_label = "EMPPterygoidL"
+
+    def execute(self, context):
+        EMPPterygoidLDef(self, context)
+        return {'FINISHED'}
+
+class EMPPterygoidR(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.pterygoidr"
+    bl_label = "EMPPterygoidR"
+
+    def execute(self, context):
+        EMPPterygoidRDef(self, context)
+        return {'FINISHED'}
+
+class EMPPalatine(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.palatine"
+    bl_label = "EMPPalatine"
+
+    def execute(self, context):
+        EMPPalatineDef(self, context)
+        return {'FINISHED'}
+
+
+class EMPUpperIncisor(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.upperincisor"
+    bl_label = "EMPUpperIncisor"
+
+    def execute(self, context):
+        EMPUpperIncisorDef(self, context)
+        return {'FINISHED'}
+
+class EMPNasalSpine(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.nasalspine"
+    bl_label = "EMPNasalSpine"
+
+    def execute(self, context):
+        EMPNasalSpineDef(self, context)
+        return {'FINISHED'}
+
+class EMPPogonion(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.pogonion"
+    bl_label = "EMPPogonion"
+
+    def execute(self, context):
+        EMPPogonionDef(self, context)
+        return {'FINISHED'}
+
+class EMPMenton(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.menton"
+    bl_label = "EMPMenton"
+
+    def execute(self, context):
+        EMPMentonDef(self, context)
+        return {'FINISHED'}
+
+class EMPMentonL(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.mentonl"
+    bl_label = "EMPMentonL"
+
+    def execute(self, context):
+        EMPMentonLDef(self, context)
+        return {'FINISHED'}
+
+class EMPMentonR(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.mentonr"
+    bl_label = "EMPMentonR"
+
+    def execute(self, context):
+        EMPMentonRDef(self, context)
+        return {'FINISHED'}
+
+# PONTOS NOS DENTES INFERIORES
+
+class EMP31(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp31"
+    bl_label = "EMP31"
+    
+    def execute(self, context):
+        EMP31Def(self, context)
+        return {'FINISHED'}
+
+
+class EMP41(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp41"
+    bl_label = "EMP41"
+    
+    def execute(self, context):
+        EMP41Def(self, context)
+        return {'FINISHED'}
+    
+class EMP33(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp33"
+    bl_label = "EMP33"
+    
+    def execute(self, context):
+        EMP33Def(self, context)
+        return {'FINISHED'}
+    
+class EMP43(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp43"
+    bl_label = "EMP43"
+    
+    def execute(self, context):
+        EMP43Def(self, context)
+        return {'FINISHED'}
+    
+
+class EMP36(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp36"
+    bl_label = "EMP36"
+    
+    def execute(self, context):
+        EMP36Def(self, context)
+        return {'FINISHED'}
+    
+
+class EMP46(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.emp46"
+    bl_label = "EMP46"
+    
+    def execute(self, context):
+        EMP46Def(self, context)
+        return {'FINISHED'}
+
+
+class EMPBpoint(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.bpoint"
+    bl_label = "EMPBpoint"
+
+    def execute(self, context):
+        EMPBpointDef(self, context)
+        return {'FINISHED'}
+
+# EMPTIES MOLES
+
+class EMPLSpoint(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.lspoint"
+    bl_label = "EMPLSpoint"
+    
+    def execute(self, context):
+        EMPLSpointDef(self, context)
+        return {'FINISHED'}
+
+class EMPPGpoint(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.pgpoint"
+    bl_label = "EMPPGpoint"
+    
+    def execute(self, context):
+        EMPPGpointDef(self, context)
+        return {'FINISHED'}
+    
+# CRIA EMPTIES INTERMEDIÁRIOS
+
+    
+class ConfSplint(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.conf_splint"
+    bl_label = "Boolean Splint"
+    
+    def execute(self, context):
+        ConfSplintDef(self, context)
+        return {'FINISHED'}
+
+# FERRAMENTAS DE MEDIDAS
+
+class MedidasVerDentes(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.medver"
+    bl_label = "Medidas Verticais"
+    
+    def execute(self, context):
+        MedidasVerDentesDef(self, context)
+        return {'FINISHED'}
+
+
+class ChangeSolidXRay(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.change_solid_xray"
+    bl_label = "Change Solid/X-Ray"
+    
+    def execute(self, context):
+        ChangeSolidXRayDef(self, context)
+        return {'FINISHED'}
+
+class ChangeRenderEngine(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.change_engine_render"
+    bl_label = "Change Engine Render"
+    
+    def execute(self, context):
+        ChangeRenderEngineDef(self, context)
+        return {'FINISHED'}
+
+
+class ConfiguraCefalo(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.configura_cefalo"
+    bl_label = "Configura Cefalometria"
+    
+    def execute(self, context):
+        ConfiguraCefaloDef(self, context)
+        return {'FINISHED'}  
+
+
+# IMPORTA TOMO
 
 class CapturaLocal(PropertyGroup):
 
@@ -1030,7 +1102,7 @@ class CapturaLocal(PropertyGroup):
 
 class ImportaTomo(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Importa Tomo"
+    bl_label = "Import CT-Scan"
     bl_idname = "importa_tomo"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1040,45 +1112,162 @@ class ImportaTomo(bpy.types.Panel):
         layout = self.layout
         scn = context.scene
         obj = context.object 
+
+        row = layout.row()
+        row.label(text="CT-Scan Preparing:")
+
+        col = layout.column(align=True)
+        col.prop(scn.my_tool, "path", text="")
+
+        if platform.system() == "Windows":
+            row = layout.row()
+            row.operator("wm.console_toggle", text="Open Terminal?", icon="CONSOLE")
+		
+        row = layout.row()
+        row.operator("object.ajusta_tomo", text="Organize", icon="NODETREE")
+
+
+        row = layout.row()
+        row.label(text="CT-Scan Fix:")
+
+        if platform.system() == "Linux":
+            col = layout.column(align=True)
+            col.prop(scn.my_tool, "path", text="")
+
+            row = layout.row()
+            row.operator("object.corrige_dicom", text="Fix it!", icon="FILE_TICK")
+
+
+        row = layout.row()
+        row.label(text="CT-Scan Reconstruction:")
+
+        col = layout.column(align=True)
+        col.prop(scn.my_tool, "path", text="")
+
+        row = layout.row()
+        row.operator("object.tomo_heli", text="CT-Scan")
+        row.operator("object.tomo_cone", text="CBCT")
+
+        col = self.layout.column(align = True)
+        col.prop(context.scene, "interesse_ossos")
+
+        col = self.layout.column(align = True)
+        col.prop(context.scene, "interesse_mole")
+
+        col = self.layout.column(align = True)
+        col.prop(context.scene, "interesse_dentes")
+
+        if platform.system() == "Windows":
+            row = layout.row()
+            row.operator("wm.console_toggle", text="Open Terminal?", icon="CONSOLE")
+
+        row = layout.row()
+        row.operator("object.gera_modelos_tomo", text="Convert DICOM to 3D", icon="SNAP_FACE")
+
+        row = layout.row()
+        row.label(text="Cephalometry & X-Ray:")
         
+        row = layout.row()
+        row.operator("object.change_solid_xray", text="Change Solid/X-Ray", icon="MOD_WIREFRAME")
+        
+        row = layout.row()
+        row.operator("object.configura_cefalo", text="Setup Cephalometry", icon="SETTINGS")
+        
+        row = layout.row()
+        row.operator("object.change_engine_render", text="Change Render Engine", icon="SCENE")
+        
+        row = layout.row()
+        row.label(text="Viewpoint Cameras:")
+
+        row = layout.row()
+        row.operator("object.camera_xray_view", text="Cephalometry View", icon="RESTRICT_VIEW_OFF")
+
+
+        row = layout.row()
+        row.operator("object.camera_panoramic", text="Panoramic View", icon="RESTRICT_VIEW_OFF") 
+        
+        row = layout.row()
+        row.label(text="Graphic References:")
+
+        row = layout.row()
+        linha=row.operator("mesh.add_linhabase", text="Vertical Center Line", icon="PAUSE")
+        linha.location=(0,-200,0)
+
+        row = layout.row()
+        linha=row.operator("mesh.add_linhabase", text="Horizontal Center Line", icon="ZOOMOUT")
+        linha.location=(0,-200,0)
+        linha.rotation=(0,1.5708,0)
+        
+        row = layout.row()
+        linha=row.operator("mesh.add_linhabase", text="Horizontal Side Line", icon="ZOOMOUT")
+        linha.location=(200,30,0)
+        linha.rotation=(1.5708,0,0)
+
+        row = layout.row()
+        row.label(text="Segmentation:")
+
+        row = layout.row()
+        
+        row = layout.row()
+        row.operator("gpencil.draw", icon='LINE_DATA', text="Draw Line").mode = 'DRAW_POLY'
+
+        row = layout.row()
+        linha=row.operator("object.segmenta_desenho", text="Cut Draw!", icon="FCURVE")
+
+        row = layout.row()
+
+        row = layout.row()
+        linha=row.operator("mesh.select_more", text="Sel. More", icon="ZOOMIN")
+        
+        linha=row.operator("mesh.select_less", text="Sel. Less", icon="ZOOMOUT")     
+  
+        row = layout.row()
+        row.label(text="Arch Teeth Import:")
+
         col = layout.column(align=True)
         col.prop(scn.my_tool, "path", text="")
  
         row = layout.row()
-        row.operator("object.gera_modelos_tomo", text="Converte DICOM para 3D", icon="SNAP_FACE")
-        
-#       print (scn.my_tool.path)
-
-  
-        
-#IMPORTA STL
-  
-class OOB_import_stl(bpy.types.Panel):
-    """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Importar Tomo 3D/Moldes"
-    bl_idname = "import_stl"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-    bl_category = "Ortog"
-
-    def draw(self, context):
-        layout = self.layout
-
-        obj = context.object
+        row.operator("object.gera_modelos_tomo_arc", text="Archs Generator", icon="SNAP_FACE")
 
         row = layout.row()
-        row.operator("import_mesh.stl", text="Importa STL", icon="IMPORT")
+        row.operator("import_mesh.stl", text="Import STL", icon="IMPORT")
+
+        row = layout.row()
+        row.label(text="Archs Lines")
         
         row = layout.row()
-        row.operator("object.align_picked_points", text="Alinha Mode Pontos", icon="PARTICLE_TIP")
+        row.label(text="ALIGN ON MISC!")
+    #    row.operator("object.align_picked_points", text="Align by Points", icon="PARTICLE_TIP")
+
+    #    row = layout.row()
+    #    row.operator("object.align_icp", text="Align by ICP", icon="PARTICLE_PATH")
 
         row = layout.row()
-        row.operator("object.align_icp", text="Alinha Molde ICP", icon="PARTICLE_PATH")
-        
+        row.label(text="Archs/Skull Targeting:")
+
         row = layout.row()
-        circle=row.operator("object.join", text="Junta com Molde", icon="GROUP")
+        row.operator("object.cria_circulo_corte_arc", text="Create Cut Ellipse", icon="META_ELLIPSOID")
 
+        row = layout.row()
+        row.operator("object.corta_arcada", text="Delet Out", icon="META_PLANE")
 
+        row = layout.row()
+        row.operator("object.corta_ossos", text="Delet In", icon="MOD_WIREFRAME")
+     
+        row = layout.row()
+        circle=row.operator("object.join", text="Joint Arch + Bone", icon="GROUP")
+
+        row = layout.row()        
+        row.label(text="Mesh Adjustments:")
+
+        row = layout.row()
+        circle=row.operator("object.fecha_buracos", text="Close Holes", icon="MOD_MESHDEFORM")
+
+        row = layout.row()
+        circle=row.operator("object.convert", text="Apply!", icon="SAVE_AS") .target='MESH'
+
+'''      
 # ZOOM
 class ZoomCena(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
@@ -1123,11 +1312,13 @@ class ZoomCena(bpy.types.Panel):
         row.operator("view3d.view_persportho", text="Persp/Orto")
         row.operator("view3d.view_all", text="Centraliza Zoom", icon="VIEWZOOM").center=False    
 
+'''
+
 # FOTOGRAMETRIA
 
 class CriaFotogrametria(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Cria Fotogrametria"
+    bl_label = "Create Photogrammetry"
     bl_idname = "cria_fotogrametria"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1138,12 +1329,23 @@ class CriaFotogrametria(bpy.types.Panel):
         layout = self.layout
         scn = context.scene
         obj = context.object 
-        
+
+        row = layout.row()
+        row.operator("object.abre_tmp", text="Open Temporary Dir?", icon="FILESEL")
+
         col = layout.column(align=True)
         col.prop(scn.my_tool, "path", text="")
- 
+
+        if platform.system() == "Windows":
+            row = layout.row()
+            row.operator("wm.console_toggle", text="Open Terminal?", icon="CONSOLE")
+
         row = layout.row()
-        row.operator("object.gera_modelo_foto", text="Iniciar Fotogrametria", icon="IMAGE_DATA")
+        row.operator("object.gera_modelo_foto", text="Start Photogrammetry!", icon="IMAGE_DATA")
+
+        row = layout.row()
+        row.operator("object.gera_modelo_foto_smvs", text="SMVS+Meshlab", icon="IMAGE_DATA")
+
         
 #       print (scn.my_tool.path)
  
@@ -1153,7 +1355,7 @@ class CriaFotogrametria(bpy.types.Panel):
    
 class OOB_import_obj(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Importar Fotogrametria"
+    bl_label = "Import Photogrammetry"
     bl_idname = "import_obj"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1165,33 +1367,28 @@ class OOB_import_obj(bpy.types.Panel):
         obj = context.object
 
         row = layout.row()
-        row.operator("import_scene.obj", text="Importa OBJ", icon="MOD_MASK")
+        row.operator("import_scene.obj", text="Import OBJ", icon="MOD_MASK")
         #ORIGINAL bpy.ops.import_mesh.stl()
         
         row = layout.row()
-        circle=row.operator("mesh.primitive_circle_add", text="Círculo de Corte", icon="MESH_CIRCLE")
-        circle.radius=200
-        circle.vertices=100
-        circle.location=(85,-185,0)
-        circle.rotation=(0,1.5708,0)
+        row.operator("object.cria_circulo_corte", text="Cutting circle", icon="MESH_CIRCLE")
+#        circle=row.operator("mesh.primitive_circle_add", text="Círculo de Corte", icon="MESH_CIRCLE")
+#        circle.radius=200
+#        circle.vertices=100
+#        circle.location=(85,-185,0)
+#        circle.rotation=(0,1.5708,0)
 
         row = layout.row()
-        knife=row.operator("object.corta_face", text="Cortar!", icon="META_PLANE")
+        knife=row.operator("object.corta_face", text="Cut!", icon="META_PLANE")
         
-#        row = layout.row()
-#        knife=row.operator("mesh.knife_project", text="Cortar!", icon="META_PLANE")
-#        knife.cut_through=True
         
-#        row = layout.row()
-#        circle=row.operator("mesh.separate", text="Separa Face", icon="GROUP_VERTEX")
-#        circle.type='SELECTED'
- 
+        
             
 # IMPORTA CEFALOMETRIA
 
 class ImportaCefalometria(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Importar Cefalometria"
+    bl_label = "Import Cephalometry"
     bl_idname = "Importa_Cefalometria"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1203,13 +1400,13 @@ class ImportaCefalometria(bpy.types.Panel):
         obj = context.object
 
         row = layout.row()
-        row.operator("import_image.to_plane", text="Importa Imagem", icon="FILE_IMAGE")
+        row.operator("import_image.to_plane", text="Import Image", icon="FILE_IMAGE")
 
 #ALINHA FACES
 
 class AlinhaFaces(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Alinha Faces"
+    bl_label = "Align Face"
     bl_idname = "alinha_faces"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1221,27 +1418,32 @@ class AlinhaFaces(bpy.types.Panel):
         obj = context.object
 
         row = layout.row()        
-        row.label(text="Alinhamento e Redimensionamento:")
-        layout.operator("object.alinha_rosto", text="1 - Alinha com a Camera", icon="MANIPUL")
+        row.label(text="Align and Resize:")
+        layout.operator("object.alinha_rosto", text="1 - Align with the Camera", icon="MANIPUL")
         col = self.layout.column(align = True)
         col.prop(context.scene, "medida_real")  
-        layout.operator("object.alinha_rosto2", text="2 - Alinha e Redimensiona", icon="LAMP_POINT")
+        layout.operator("object.alinha_rosto2", text="3 - Align and resize", icon="LAMP_POINT")
+        
+        row = layout.row()
+        row.operator("object.rotaciona_z", text="Flip Z", icon="FORCE_MAGNETIC")
 
         row = layout.row()
-        row.label(text="Alinhamento por Pontos:")
+        row.label(text="Align by Points:")
 
         row = layout.row()
-        row.operator("object.align_picked_points", text="Alinha por Pontos", icon="PARTICLE_TIP")
+        row.label(text="ALIGN ON MISC!")
+#        row.operator("object.align_picked_points", text="Align by Points", icon="PARTICLE_TIP")
 
-        row = layout.row()
-        row.operator("object.align_icp", text="Alinha ICP", icon="PARTICLE_PATH")
+#        row = layout.row()
+#        row.operator("object.align_icp", text="Align by ICP", icon="PARTICLE_PATH")
     
+
 
 # OSTEOTOMIA
 
 class Osteotomia(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Osteotomia"
+    bl_label = "Osteotomy"
     bl_idname = "Object_Name"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1253,63 +1455,65 @@ class Osteotomia(bpy.types.Panel):
         obj = context.object
        
         row = layout.row()
-        circle=row.operator("mesh.add_mento", text="Plano Mento", icon="TRIA_DOWN")
+        circle=row.operator("mesh.add_mento", text="Chin Plane", icon="TRIA_DOWN")
         circle.location=(0,-35,-81)
         
         row = layout.row()
-        circle=row.operator("mesh.add_ramo", text="Plano Ramo Esquerdo", icon="TRIA_RIGHT")
+        circle=row.operator("mesh.add_ramo", text="Left Ramus Plane", icon="TRIA_RIGHT")
         circle.location=(36, -4, -45)
         
         row = layout.row()
-        circle=row.operator("mesh.add_ramo", text="Plano Ramo Direito", icon="TRIA_LEFT")
+        circle=row.operator("mesh.add_ramo", text="Right Ramus Plane", icon="TRIA_LEFT")
         circle.location=(-36, -4, -45)
         
         row = layout.row()
-        circle=row.operator("mesh.add_maxila", text="Plano Maxila", icon="TRIA_UP")
+        circle=row.operator("mesh.add_maxila", text="Maxilla Plane", icon="TRIA_UP")
         circle.location=(0, -45, -31)
  
         row = layout.row()
-        circle=row.operator("object.join", text="Junta Tudo", icon="GROUP")
+        circle=row.operator("object.join", text="Joint All", icon="GROUP")
     
         
         row = layout.row()
-        circle=row.operator("object.cria_espessura", text="Cria Espessura", icon="MOD_SOLIDIFY")
+        circle=row.operator("object.cria_espessura", text="Create Thickness", icon="MOD_SOLIDIFY")
                
         row = layout.row()
-        #circle=row.operator("import_image.to_plane", text="Habilita Planos de Corte", icon="BONE_DATA")
-        circle=row.operator("view3d.cork_mesh_slicer", text="Boolean Cortes", icon="MOD_BOOLEAN")
+        circle=row.operator("view3d.cork_mesh_slicer", text="Cut Boolean", icon="MOD_BOOLEAN")
         circle.method='DIFF'
         
         # Não é necessário estar em Object Mode
         row = layout.row()
-        circle=row.operator("mesh.separate", text="Separa Osteotomia", icon="GROUP_VERTEX")
+        circle=row.operator("mesh.separate", text="Separate Osteotomy", icon="GROUP_VERTEX")
         circle.type='LOOSE'
+        
+        row = layout.row()
+        circle=row.operator("object.importa_armature", text="Setup Armature", icon="GROUP_BONE")        
 
         row = layout.row()        
-        row.label(text="Configura Peças:")
+        row.label(text="Setup Pieces:")
 
         row = layout.row()
-        row.operator("object.configura_cabeca", text="Configura Cabeça")
+        row.operator("object.configura_cabeca", text="Setup Head")
 
         row = layout.row()
-        row.operator("object.configura_maxila", text="Configura Maxila")
+        row.operator("object.configura_maxila", text="Setup Maxilla")
 
         row = layout.row()
-        row.operator("object.configura_ramo_dir", text="Configura Ramo Direito")
+        row.operator("object.configura_ramo_dir", text="Setup Right Ramus")
 
         row = layout.row()
-        row.operator("object.configura_ramo_esq", text="Configura Ramo Esquerdo")
+        row.operator("object.configura_ramo_esq", text="Setup Left Ramus")
 
         row = layout.row()
-        row.operator("object.configura_corpo_mand", text="Configura Corpo Mandíbula")
+        row.operator("object.configura_corpo_mand", text="Configure Mandible Body")
 
         row = layout.row()
-        row.operator("object.configura_mento", text="Configura Mento")
+        row.operator("object.configura_mento", text="Setup Chin")
 
         
 class DinamicaMole(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Dinâmica do Mole"
+    bl_label = "Soft Tissue Dynamics"
     bl_idname = "Dinamica_Mole"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1322,28 +1526,174 @@ class DinamicaMole(bpy.types.Panel):
               
 
         row = layout.row()
-        circle=row.operator("object.configura_dinamica_mole", text="Configura Dinâmica Mole", icon="STYLUS_PRESSURE")
+        circle=row.operator("object.configura_dinamica_mole", text="Setup Soft Tissue Dynamics", icon="STYLUS_PRESSURE")
+       
+        row = layout.row()
+        circle=row.operator("view3d.clip_border", text="Clipping Border", icon="UV_FACESEL")
 
-#        row = layout.row()
-#        circle=row.operator("object.areas_influencia", text="Gera Grupos Influêcia", icon="GROUP_VCOL")
-        
-#        row = layout.row()
-#        circle=row.operator("object.cria_areas_deformacao", text="Cria Áreas de Deformação", icon="STYLUS_PRESSURE")
-        
-#        row = layout.row()
-#        circle=row.operator("object.convert", text="Aplica Deformação", icon="FILE_TICK").target='MESH'
+# PONTOS ANATÔMICOS
 
-#        row = layout.row()
-#        circle=row.operator("object.parent_set", text="Parentear Estrutura", icon="BONE_DATA").type='ARMATURE'
+class PontosAnatomicos(bpy.types.Panel):
+    """Planejamento de cirurgia ortognática no Blender"""
+    bl_label = "Anatomical Points"
+    bl_idname = "Pontos_Anatomicos"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = "Ortog"
+
+    def draw(self, context):
+        layout = self.layout
+        
+        obj = context.object
+
+        row = layout.row()        
+        row.label(text="Maxilla:")
+
+        row = layout.row()
+        row.operator("object.emp11", text="Tooth 8 (11)", icon="X")
+
+        row = layout.row()
+        row.operator("object.emp21", text="Tooth 9 (21)", icon="X")
         
         row = layout.row()
-        circle=row.operator("view3d.clip_border", text="Filete de Visualização", icon="UV_FACESEL")
+        row.operator("object.emp13", text="Tooth 6 (13)", icon="X")       
+
+        row = layout.row()
+        row.operator("object.emp23", text="Tooth 11 (23)", icon="X") 
+        
+        row = layout.row()
+        row.operator("object.emp16", text="Tooth 3 (16)", icon="X")
+        
+        row = layout.row()
+        row.operator("object.emp26", text="Tooth 14 (26)", icon="X")
+
+        row = layout.row()
+        row.operator("object.palatine", text="Palatine", icon="X")
+
+        row = layout.row()
+        row.operator("object.upperincisor", text="Upper Incisor", icon="X")
+
+        row = layout.row()
+        row.operator("object.nasalspine", text="Nasal Spine", icon="X")
+
+        row = layout.row()
+        row.operator("object.pterygoidl", text="Pterygoid Process (L)", icon="X")
+
+        row = layout.row()
+        row.operator("object.pterygoidr", text="Pterygoid Process (R)", icon="X")
+
+        row = layout.row()        
+        row.label(text="Mandible Body:")
+
+        row = layout.row()
+        row.operator("object.emp31", text="Tooth 24 (31)", icon="X")
+        
+        row = layout.row()
+        row.operator("object.emp41", text="Tooth 25 (41)", icon="X")
+        
+        row = layout.row()
+        row.operator("object.emp33", text="Tooth 22 (33)", icon="X")
+
+        row = layout.row()
+        row.operator("object.emp43", text="Tooth 27 (43)", icon="X")
+        
+        row = layout.row()
+        row.operator("object.emp36", text="Tooth 19 (36)", icon="X")
+        
+        row = layout.row()
+        row.operator("object.emp46", text="Tooth 30 (46)", icon="X")
+
+        row = layout.row()
+        row.operator("object.bpoint", text="B Point", icon="X")
+
+        row = layout.row()
+        row.label(text="Chin:")
+
+        row = layout.row()
+        row.operator("object.pogonion", text="Pogonion or Up", icon="X")
+
+        row = layout.row()
+        row.operator("object.menton", text="Menton", icon="X")
+
+        row = layout.row()
+        row.operator("object.mentonl", text="Menton Left", icon="X")
+
+        row = layout.row()
+        row.operator("object.mentonr", text="Menton Right", icon="X")
+
+        row = layout.row()
+        row.label(text="Soft Tissue:")
+
+        row = layout.row()
+        row.operator("object.lspoint", text="Ls Point (Edit)", icon="X")
+
+        row = layout.row()
+        row.operator("object.pgpoint", text="Pg Point (Edit)", icon="X")
+
+# FERRAMENTAS DE MEDIDAS
+
+class FerramentasRefMedidas(bpy.types.Panel):
+    """Planejamento de cirurgia ortognática no Blender"""
+    bl_label = "Measuring Tools"
+    bl_idname = "feramentas_medidas"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = "Ortog"
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene
+        obj = context.object 
+        
+        row = layout.row()
+        row.label(text="Vertical Measurements:")
+
+        row = layout.row()
+        row.operator("object.medver", text="Create Vertical Measurements", icon="LAMP_SUN")
+
+        row = layout.row()
+        row.operator("measureit.runopenglbutton", text="Show/Hide measurements", icon="GHOST_ENABLED")
+
+# ANIMAÇÃO
+
+class CinematicaPanel(bpy.types.Panel):
+    """Planejamento de cirurgia ortognática no Blender"""
+    bl_label = "Kinematic"
+    bl_idname = "cinematica"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = "Ortog"
+
+    def draw(self, context):
+        layout = self.layout
+        
+        obj = context.object
+
+        row = layout.row()
+        row.label(text="Controllers:")
+
+        row = layout.row()
+        row.operator("screen.frame_jump", text="Start", icon="REW").end=False
+        row.operator("screen.animation_play", text="", icon="PLAY_REVERSE").reverse=True
+        row.operator("anim.animalocrot", text="", icon="CLIP")
+        row.operator("screen.animation_play", text="", icon="PLAY")
+        row.operator("screen.frame_jump", text="End", icon="FF").end=True
+
+        row = layout.row()
+        row.label(text="Capturing:")
+
+        row = layout.row()
+        row.operator("object.captura_ini_todos", text="Start Cap", icon="TRIA_LEFT_BAR")
+        row.operator("object.captura_fin_todos", text="End Cap", icon="TRIA_RIGHT_BAR")
+
+        row = layout.row()
+        row.operator("object.gera_deslocamento_todos", text="Generate Data Action", icon="FULLSCREEN_ENTER")
 
 # SPLINT
 
-class CriaSplint(bpy.types.Panel):
+class CriaSplintPanel(bpy.types.Panel):
     """Planejamento de cirurgia ortognática no Blender"""
-    bl_label = "Criação do Splint"
+    bl_label = "Splint Creation"
     bl_idname = "Cria_Splint"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1354,43 +1704,194 @@ class CriaSplint(bpy.types.Panel):
         
         obj = context.object
         
+    
+#        row = layout.row()        
+#        row.label(text="Configuração do Splint:") 
+
         row = layout.row()
-        row.operator("screen.frame_jump", text="Inicio", icon="REW").end=False
-        row.operator("screen.animation_play", text="", icon="PLAY_REVERSE").reverse=True
-        row.operator("anim.keyframe_insert", text="", icon="CLIP").type='BUILTIN_KSI_LocRot'
-        row.operator("screen.animation_play", text="", icon="PLAY")
-        row.operator("screen.frame_jump", text="Final", icon="FF").end=True
+        row.operator("object.cria_splint", text="Create Splint", icon="OUTLINER_OB_CURVE")
+
+        row = layout.row()
+        row.operator("object.conf_splint", text="Prepare Boolean", icon="RECOVER_AUTO")        
         
         row = layout.row()
-        circle=row.operator("object.convert", text="Aplica Deformação", icon="FILE_TICK").target='MESH'
+        circle=row.operator("view3d.cork_mesh_slicer", text="Boolean Cuts", icon="MOD_BOOLEAN")
+        circle.method='DIFF'    
+
+#        row = layout.row()
+#        circle=row.operator("object.convert", text="Aplica Deformação", icon="FILE_TICK").target='MESH'
+    
+        row = layout.row()
+        row.operator("object.prepara_impressao", text="Prepares 3D Printing", icon="MOD_REMESH")
         
         row = layout.row()
-        circle=row.operator("view3d.cork_mesh_slicer", text="Boolean Splint", icon="MOD_BOOLEAN")
-        circle.method='DIFF'
+        row.operator("export_mesh.stl", text="Export STL", icon="EXPORT")
+
+
+class FerrZoom(bpy.types.Header):
+    """Planejamento de cirurgia ortognática no Blender"""
+    bl_label = "Criação do Splint"
+    bl_idname = "Cria_Splint"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'HEADER'
+    bl_category = "Ortog"
+
+    def draw(self, context):
+        layout = self.layout
+
+        obj = context.object
+
+        row = layout.row()
+        row = layout.row()
+        row.operator("view3d.viewnumpad", text="Front").type='FRONT'
+        row.operator("view3d.viewnumpad", text="Back").type='BACK'
+        row.operator("view3d.viewnumpad", text="Right").type='RIGHT'
+        row.operator("view3d.viewnumpad", text="Left").type='LEFT'
+        row.operator("view3d.viewnumpad", text="Top").type='TOP'
+        row.operator("view3d.viewnumpad", text="Bottom").type='BOTTOM'
         
         row = layout.row()
-        row.operator("object.prepara_impressao", text="Prepara Impressão 3D", icon="MOD_REMESH")
-        #row.prop(obj.modifiers["Remesh"], "octree_depth", text="Subdivisão")
+        row.operator("opr.pan_down_view1", text="", icon="TRIA_UP")
+        row.operator("opr.pan_up_view1", text="", icon="TRIA_DOWN")
+        row.operator("opr.pan_right_view1", text="", icon="TRIA_LEFT")
+        row.operator("opr.pan_left_view1", text="", icon="TRIA_RIGHT")
+
+        row = layout.row()
+        row.operator("opr.orbit_down_view1", text="", icon="FILE_PARENT")
+        row.operator("opr.orbit_up_view1", text="", icon="FILE_REFRESH")
+        row.operator("opr.orbit_right_view1", text="", icon="LOOP_BACK")
+        row.operator("opr.orbit_left_view1", text="", icon="LOOP_FORWARDS")
+
         
         row = layout.row()
-        row.operator("export_mesh.stl", text="Exporta STL", icon="EXPORT")
+        row.operator("view3d.view_persportho", text="Persp/Ortho")
+        row.operator("view3d.view_all", text="Center Zoom", icon="VIEWZOOM").center=False    
+
+# Cefalometria Medidas
+
+class CefaloTeste(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.cefalodel"
+    bl_label = "Objeto Teste" # Tem que ter nome diferente
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "ortog"
+    
+    def execute(self, context):
+        testeDef(self, context)
+        return {'FINISHED'}
+
+class CefaloCalculaTudo(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.cefalo_calc_tudo"
+    bl_label = "Cefalo Calcula Tudo" # Tem que ter nome diferente
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "ortog"
+    
+    def execute(self, context):
+        CefaloCalculaTudoDef(self, context)
+        return {'FINISHED'}
+
+
+class CefaloTeste1(bpy.types.Panel):
+    """Apenas um teste 1"""
+    bl_label = "Cephalometry"
+    bl_idname = "cefalo_but"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "ortog"
+
+    def draw(self, context):
+        layout = self.layout
+
+        obj = context.object
+
+#        row = layout.row()
+#        row.operator("mesh.primitive_monkey_add", text="Add monkey", icon="MESH_MONKEY")
+
+#        row = layout.row()
+#        row.operator("object.teste", text="Modificadores", icon="MOD_SUBSURF")
+
+        row = layout.row()
+        row.operator("object.cefalo_calc_tudo", text="Calculate All!", icon="SCRIPTWIN")
+
+#        col = self.layout.column(align = True)
+        row = layout.row(align = True)
+#        split = row.split(percentage=0.5)
+        row.prop(context.scene, "angulo_SNA")
+        row.label(text="80º - 84º")
+
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_SNB")
+        row.label(text="78º - 82º")  
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_ANB")
+        row.label(text="0º - 4º")
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_Y_Cresc")
+        row.label(text="65º - 69º") 
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_SNPlO")
+        row.label(text="12º - 16º")
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_FMA")
+        row.label(text="23º - 27º")
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_FMIA")
+        row.label(text="66º - 70º")
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_IMPA")
+        row.label(text="85º - 89º")
+
+        row = layout.row(align = True)
+        row.prop(context.scene, "angulo_NS")
+        row.label(text="101º - 105º")
 
 
 def register():
     bpy.utils.register_class(ortogPreferences)
 #    bpy.utils.register_class(ortogPreferences2)
+    bpy.utils.register_class(CorrigeDicom)
+    bpy.utils.register_class(capturaINItodos)
+    bpy.utils.register_class(capturaFINtodos)
+    bpy.utils.register_class(geraDeslocamentoTODOS)
+    bpy.utils.register_class(AbreTMP)
+    bpy.utils.register_class(AjustaTomo)
     bpy.utils.register_class(CriaMento)
     bpy.types.INFO_MT_mesh_add.append(add_object_button)
     bpy.utils.register_class(CortaFace)
     bpy.utils.register_class(AlinhaRosto)
-    bpy.utils.register_class(MedidaReal)
+    bpy.utils.register_class(CriaCirculoCorte)
+#    bpy.utils.register_class(MedidaReal)
     bpy.types.Scene.medida_real = bpy.props.StringProperty \
       (
-        name = "Medida Real",
+        name = "2 - Actual Measure",
         description = "Medida real distância cantal",
-        default = "1"
+        default = "0"
       )
     bpy.utils.register_class(AlinhaRosto2)
+    bpy.utils.register_class(AnimaLocRot)
+    bpy.utils.register_class(TomoHeli)
+    bpy.utils.register_class(TomoCone)
+    bpy.utils.register_class(rotacionaZ)
+    bpy.utils.register_class(GeraModelosTomoArc)
+    bpy.utils.register_class(CameraXRayView)
+    bpy.utils.register_class(CameraPanoramic)
+    bpy.utils.register_class(LinhaBase)
+    bpy.utils.register_class(ImportaArmature)
+    bpy.utils.register_class(CriaCirculoCorteArc)
+    bpy.utils.register_class(CortaArcada)
+    bpy.utils.register_class(CortaOssos)
+    bpy.utils.register_class(SegmentaDesenho)
+    bpy.utils.register_class(FechaBuracos)
     bpy.utils.register_class(CriaEspessura)
     bpy.utils.register_class(PreparaImpressao)
     bpy.utils.register_class(CriaRamo)
@@ -1405,31 +1906,164 @@ def register():
     bpy.utils.register_class(ConfiguraCabeca)
     bpy.utils.register_class(AreasInfluencia)
     bpy.utils.register_class(CriaAreasDeformacao)
+    bpy.types.Scene.interesse_ossos = bpy.props.StringProperty \
+      (
+        name = "Bone Factor",
+        description = "Fatos interesse ossos",
+        default = "200"
+      )
+    bpy.types.Scene.interesse_mole = bpy.props.StringProperty \
+      (
+        name = "Soft Factor",
+        description = "Fatos interesse mole",
+        default = "-300"
+      )
+    bpy.types.Scene.interesse_dentes = bpy.props.StringProperty \
+      (
+        name = "Teeth Factor",
+        description = "Fatos interesse dentes",
+        default = "1760"
+      )
     bpy.utils.register_class(GeraModelosTomo)
     bpy.utils.register_class(GeraModeloFoto)
+    bpy.utils.register_class(GeraModeloFotoSMVS)
     bpy.utils.register_class(ConfiguraDinamicaMole)
     bpy.utils.register_class(ImportaTomo)
-    bpy.utils.register_class(OOB_import_stl)
-    bpy.utils.register_class(ZoomCena)
+#    bpy.utils.register_class(ZoomCena)
     bpy.utils.register_class(CriaFotogrametria)
+    bpy.utils.register_class(AlinhaFaces)
     bpy.utils.register_class(OOB_import_obj)
     bpy.utils.register_class(ImportaCefalometria)
-    bpy.utils.register_class(AlinhaFaces)
     bpy.utils.register_class(Osteotomia)
     bpy.utils.register_class(DinamicaMole)
+    bpy.utils.register_class(PontosAnatomicos)
+    bpy.utils.register_class(FerramentasRefMedidas)
     bpy.utils.register_class(CriaSplint)
+    bpy.utils.register_class(MedidasVerDentes)
+    bpy.utils.register_class(ChangeSolidXRay)
+    bpy.utils.register_class(ChangeRenderEngine)
+    bpy.utils.register_class(ConfiguraCefalo)
     bpy.utils.register_class(CapturaLocal)
     bpy.types.Scene.my_tool = PointerProperty(type=CapturaLocal)
+    bpy.utils.register_class(ImportaSplint)
+    bpy.utils.register_class(EMP11)
+    bpy.utils.register_class(EMP21)
+    bpy.utils.register_class(EMP13)
+    bpy.utils.register_class(EMP23)
+    bpy.utils.register_class(EMP16)
+    bpy.utils.register_class(EMP26)
+    bpy.utils.register_class(EMPUpperIncisor)
+    bpy.utils.register_class(EMPPalatine)
+    bpy.utils.register_class(EMPNasalSpine)
+    bpy.utils.register_class(EMPPterygoidL)
+    bpy.utils.register_class(EMPPterygoidR)
+    bpy.utils.register_class(EMP31)
+    bpy.utils.register_class(EMP41)
+    bpy.utils.register_class(EMP33)
+    bpy.utils.register_class(EMP43)
+    bpy.utils.register_class(EMP36)
+    bpy.utils.register_class(EMP46)
+    bpy.utils.register_class(EMPBpoint)
+    bpy.utils.register_class(EMPMenton)
+    bpy.utils.register_class(EMPPogonion)
+    bpy.utils.register_class(EMPMentonL)
+    bpy.utils.register_class(EMPMentonR)
+    bpy.utils.register_class(EMPLSpoint)
+    bpy.utils.register_class(EMPPGpoint)
+    bpy.utils.register_class(CinematicaPanel)
+    bpy.utils.register_class(CriaSplintPanel)
+    bpy.utils.register_class(ConfSplint)
+    bpy.utils.register_class(FerrZoom)
+    bpy.utils.register_class(CefaloTeste)
+    bpy.utils.register_class(CefaloTeste1)
+    bpy.types.Scene.angulo_SNA = bpy.props.StringProperty \
+      (
+        name = "SNA",
+        description = "Ângulo SNA",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_SNB = bpy.props.StringProperty \
+      (
+        name = "SNB",
+        description = "Ângulo SNB",
+        default = "NONE"
+      )
+
+    bpy.types.Scene.angulo_ANB = bpy.props.StringProperty \
+      (
+        name = "ANB",
+        description = "Ângulo ANB",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_Y_Cresc = bpy.props.StringProperty \
+      (
+        name = "Y Growing",
+        description = "Ângulo Y de Screscimento",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_SNPlO = bpy.props.StringProperty \
+      (
+        name = "SNPlO",
+        description = "ANgulo SN Molares",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_FMA = bpy.props.StringProperty \
+      (
+        name = "FMA",
+        description = "Ângulo FMA",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_FMIA = bpy.props.StringProperty \
+      (
+        name = "FMIA",
+        description = "Ângulo FMA",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_IMPA = bpy.props.StringProperty \
+      (
+        name = "IMPA",
+        description = "Ângulo IMPA",
+        default = "NONE"
+      )
+    bpy.types.Scene.angulo_NS = bpy.props.StringProperty \
+      (
+        name = "1NS",
+        description = "Ângulo 1NS",
+        default = "NONE"
+      )
+    bpy.utils.register_class(CefaloCalculaTudo)
 
 
 def unregister():
+    del bpy.types.Scene.medida_real
+    bpy.utils.unregister_class(CorrigeDicom)
+    bpy.utils.unregister_class(capturaINItodos)
+    bpy.utils.unregister_class(capturaFINtodos)
+    bpy.utils.unregister_class(geraDeslocamentoTODOS)
+    bpy.utils.unregister_class(AbreTMP)
+    bpy.utils.unregister_class(AjustaTomo)
     bpy.utils.unregister_class(ortogPreferences)
 #    bpy.utils.unregister_class(ortogPreferences2)
     bpy.utils.unregister_class(CortaFace)
     bpy.utils.unregister_class(AlinhaRosto)
-    bpy.utils.register_class(MedidaReal)
+    bpy.utils.unregister_class(CriaCirculoCorte)
+#    bpy.utils.register_class(MedidaReal)
     del bpy.types.Scene.medida_real
     bpy.utils.unregister_class(AlinhaRosto2)
+    bpy.utils.unregister_class(AnimaLocRot)
+    bpy.utils.unregister_class(TomoHeli)
+    bpy.utils.unregister_class(TomoCone)
+    bpy.utils.unregister_class(rotacionaZ)
+    bpy.utils.unregister_class(GeraModelosTomoArc)
+    bpy.utils.unregister_class(CameraXRayView)
+    bpy.utils.unregister_class(CameraPanoramic)
+    bpy.utils.unregister_class(LinhaBase)
+    bpy.utils.unregister_class(ImportaArmature)
+    bpy.utils.unregister_class(CriaCirculoCorteArc)
+    bpy.utils.unregister_class(CortaArcada)
+    bpy.utils.unregister_class(CortaOssos)
+    bpy.utils.unregister_class(FechaBuracos)
+    bpy.utils.unregister_class(SegmentaDesenho)
     bpy.utils.unregister_class(CriaEspessura)
     bpy.utils.unregister_class(CriaMento)
     bpy.types.INFO_MT_mesh_add.remove(add_object_button)
@@ -1449,18 +2083,59 @@ def unregister():
     bpy.utils.unregister_class(ConfiguraDinamicaMole)
     bpy.utils.unregister_class(GeraModelosTomo)
     bpy.utils.unregister_class(GeraModeloFoto)
+    bpy.utils.unregister_class(GeraModeloFotoSMVS)
+    del bpy.types.Scene.interesse_ossos
+    del bpy.types.Scene.interesse_mole
+    del bpy.types.Scene.interesse_dentes
     bpy.utils.unregister_class(ImportaTomo)
-    bpy.utils.unregister_class(OOB_import_stl)
-    bpy.utils.unregister_class(ZoomCena)
+#    bpy.utils.unregister_class(ZoomCena)
     bpy.utils.unregister_class(CriaFotogrametria)
+    bpy.utils.unregister_class(AlinhaFaces)
     bpy.utils.unregister_class(OOB_import_obj)
     bpy.utils.unregister_class(ImportaCefalometria)
-    bpy.utils.unregister_class(AlinhaFaces)
     bpy.utils.unregister_class(Osteotomia)
     bpy.utils.unregister_class(DinamicaMole)
+    bpy.utils.unregister_class(PontosAnatomicos)
+    bpy.utils.unregister_class(FerramentasRefMedidas)
     bpy.utils.unregister_class(CapturaLocal)
     bpy.utils.unregister_class(CriaSplint)
-
+    bpy.utils.unregister_class(ImportaSplint)
+    bpy.utils.unregister_class(EMP11)
+    bpy.utils.unregister_class(EMP21)
+    bpy.utils.unregister_class(EMP13)
+    bpy.utils.unregister_class(EMP23)
+    bpy.utils.unregister_class(EMP16)
+    bpy.utils.unregister_class(EMP26)
+    bpy.utils.unregister_class(EMPPalatine)
+    bpy.utils.unregister_class(EMPUpperIncisor)
+    bpy.utils.unregister_class(EMPNasalSpine)
+    bpy.utils.unregister_class(EMPPterygoidL)
+    bpy.utils.unregister_class(EMPPterygoidR)
+    bpy.utils.unregister_class(EMP31)
+    bpy.utils.unregister_class(EMP41)
+    bpy.utils.unregister_class(EMP33)
+    bpy.utils.unregister_class(EMP43)
+    bpy.utils.unregister_class(EMP36)
+    bpy.utils.unregister_class(EMP46)
+    bpy.utils.unregister_class(EMPBpoint)
+    bpy.utils.unregister_class(EMPMenton)
+    bpy.utils.unregister_class(EMPPogonion)
+    bpy.utils.unregister_class(EMPMentonL)
+    bpy.utils.unregister_class(EMPMentonR)
+    bpy.utils.unregister_class(EMPLSpoint)
+    bpy.utils.unregister_class(EMPPGpoint)
+    bpy.utils.unregister_class(CinematicaPanel)
+    bpy.utils.unregister_class(CriaSplintPanel)
+    bpy.utils.unregister_class(ConfSplint)
+    bpy.utils.unregister_class(MedidasVerDentes)
+    bpy.utils.unregister_class(ChangeSolidXRay)
+    bpy.utils.unregister_class(ChangeRenderEngine)
+    bpy.utils.unregister_class(ConfiguraCefalo)
+    bpy.utils.unregister_class(FerrZoom)
+    bpy.utils.unregister_class(CefaloTeste)
+    bpy.utils.unregister_class(CefaloTeste1)
+    del bpy.types.Scene.angulo_SNA
+    bpy.utils.unregister_class(CefaloCalculaTudo)
 
 if __name__ == "__main__":
     register()
